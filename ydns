@@ -220,7 +220,7 @@ $rec"
         fi 
     fi
 done
-
+d
 l i 'Finished'
 d
 exit "$ecode"
