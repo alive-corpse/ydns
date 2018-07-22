@@ -1,0 +1,227 @@
+#!/bin/sh
+#
+# Script for update and create DNS records in pdd.yandex.ru
+# by Evgeniy Shumilov <evgeniy.shumilov@gmail.com>
+#
+
+# You can place some (or all) of parameters below instead of using them in commandline
+record='' # For example: test.yourdomain.xx
+token='' # You can get token at 
+cont='' # https://pddimp.yandex.ru/api2/registrar/get_token
+ttl=''
+defttl='1440' # Default ttl for new records
+
+uri='https://pddimp.yandex.ru/api2/admin/dns'
+resp=''
+h="Run \"$0 help\" for help."
+
+#LOGLEVEL='info' # debug/info/warinig
+LOGLEVEL='info'
+LPREF='date +%Y.%m.%d-%H:%M:%S'
+DEFAULT_COLS=70 # If tput program is not exist
+LCOLOR=1 # 0/1
+
+c='[0m'
+l0='[1;30;49m'
+l1='[1;31;49m'
+l2='[1;32;49m'
+l3='[1;33;49m'
+l4='[1;34;49m'
+l5='[1;35;49m'
+l6='[1;36;49m'
+l7='[1;37;49m'
+d0='[0;30;49m'
+d1='[0;31;49m'
+d2='[0;32;49m'
+d3='[0;33;49m'
+d4='[0;34;49m'
+d5='[0;35;49m'
+d6='[0;36;49m'
+d7='[0;37;49m'
+
+# DIV function
+dv=''
+d() {
+    if [ -z "$dv" ]; then
+        [ -n "$(which tput)" ] && COLS=`tput cols` || COLS="$DEFAULT_COLS"
+        cnt=`echo "$COLS" | awk '{ print $1/2 }'`
+        [ "$LCOLOR" = "1" ] && tpl="$l1""=""$l3""-" || tpl='=-'
+        for i in `seq 1 "$cnt"`; do
+            dv="$(echo "$dv$tpl")"
+        done
+        [ "$LCOLOR" = "1" ] && dv="$(echo "$dv$c")"
+    fi
+    echo "$dv"
+}
+
+# Logging function
+l() {
+    [ -z "$LPREF" ] && LPREF='date +%Y.%m.%d-%H:%M:%S'
+    if [ -n "$2" ]; then
+        case "$1" in
+            d)
+                if [ "$LOGLEVEL" = "debug" ]; then
+                    b=''; e=''; [ "$LCOLOR" = "1" ] && b="$d4" && e="$c"
+                    echo "$b"`$LPREF`"   DEBUG: $2$e"
+                fi
+            ;;
+            i)
+                if [ "$LOGLEVEL" = "debug" ] || [ "$LOGLEVEL" = "info" ]; then
+                    b=''; e=''; [ "$LCOLOR" = "1" ] && b="$d2" && e="$c"
+                    echo "$b"`$LPREF`"    INFO: $2$e"
+                fi
+            ;;
+            n)
+                if [ "$LOGLEVEL" = "debug" ] || [ "$LOGLEVEL" = "info" ] || [ "$LOGLEVEL" = "notice" ]; then
+                    b=''; e=''; [ "$LCOLOR" = "1" ] && b="$l2" && e="$c"
+                    echo "$b"`$LPREF`"  NOTICE: $2$e"
+                fi
+            ;;
+            w)
+                if [ "$LOGLEVEL" = "debug" ] || [ "$LOGLEVEL" = "info" ] || [ "$LOGLEVEL" = "warning" ] || [ "$LOGLEVEL" = "notice" ]; then
+                    b=''; e=''; [ "$LCOLOR" = "1" ] && b="$d3" && e="$c"
+                    echo "$b"`$LPREF`" WARNING: $2$e"
+                fi
+            ;;
+            e)
+                b=''; e=''; [ "$LCOLOR" = "1" ] && b="$d1" && e="$c"
+                echo "$b"`$LPREF`"   ERROR: $2$e"
+            ;;
+            f)
+                b=''; e=''; [ "$LCOLOR" = "1" ] && b="$l1" && e="$c"
+                echo "$b"`$LPREF`"   FATAL: $2$e"
+            ;;
+            fe)
+                b=''; e=''; [ "$LCOLOR" = "1" ] && b="$l1" && e="$c"
+                echo "$b"`$LPREF`"   FATAL: $2$e"
+                b=''; e=''; [ "$LCOLOR" = "1" ] && b="$d2" && e="$c"
+                echo "$b"`$LPREF`"    INFO: All next operations will be cancelled...$e"
+                [ -n "$3" ] && exit $3 || exit 1
+            ;;
+        esac
+    else
+        case "$1" in
+            fe)
+                b=''; e=''; [ "$LCOLOR" = "1" ] && b="$l1" && e="$c"
+                echo "$b"`$LPREF`" FATAL: Not enough parameters.$e"
+                b=''; e=''; [ "$LCOLOR" = "1" ] && b="$d2" && e="$c"
+                echo "$b"`$LPREF`" INFO: All next operations will be cancelled...$e"
+                exit 1
+            ;;
+            *)
+                l i "$1"
+            ;;
+        esac
+    fi
+}
+
+d
+l i 'Start YDNS script...'
+
+case "$1" in
+    h|help|?|--help|/h|/?)
+        d
+        echo "To update yandex dns records, we need at least domain, subdomain, token and address or interface name"
+        echo "You can get token here:  https://pddimp.yandex.ru/api2/registrar/get_token"
+        echo
+        echo "Parameters:"
+        echo "  $0 <subdomain>.<domain.name> <token> <iface|ip> [ttl]"
+        echo
+        echo "  subdomain can contain few subdomains, divided by commas without spaces:"
+        echo "      subdomain1,subdomain2,subdomain3"
+        echo 
+        echo "  iface|ip: can be interface name like eth0 or ip address"
+        echo
+        echo "Examples:"
+        echo "  $0 vasiliy.pupkin.ru THIS0IS0MY0TOKEN wan0"
+        echo "  $0 vasiliy,ivan,sergey.pupkin.ru THIS0IS0MY0TOKEN 123.234.123.234 2600"
+        d
+        exit 0
+    ;;
+esac
+
+# Yandex PDD api
+api() {
+    fulluri="$uri/$1"
+    [ -n "$2" ] && METHOD="$2" || METHOD='GET'
+    l d "API query: $fulluri"
+    if resp=`curl -s -X "$METHOD" -H "PddToken: $token" "$fulluri"`; then
+        if [ -n "$resp" ]; then
+            l d "Response:
+            $resp"
+        else
+            l fe "Empty response from api: $fulluri" 2
+        fi
+    else
+        l fe "Can't make request for uri $fulluri" 1
+    fi
+}
+
+[ -n "$1" ] && record="$1"
+l i "Record(s): $record"
+domain=`echo "$record" | sed 's/^[^\.]*.//'`
+subdomain=`echo "$record" | sed 's/\..*$//'`
+if [ -z "$domain" ] || [ -z "$subdomain" ]; then
+    l fe "Domain and subdomain parameter should not be empty. $h" 127
+fi
+
+[ -n "$2" ] && token="$2"
+[ -z "$token" ] && l fe "Fail to get token. $h" 127
+
+l i "Domain: $domain"
+l i "Subdomain: $subdomain"
+
+[ -n "$3" ] && cont="$3"
+[ -z "$cont" ] && fe "Fail to get interface name or ip address. $h" 127
+
+if [ -n "$(echo "$cont" | grep '[a-zA-Z]')" ]; then
+    if ip=`ip address show "$cont" | sed '/^[ ]*inet /!d;s/^[ ]*inet //;s/ .*$//;s/\/[0-9]*$//'`; then
+        [ -z "$(echo "$ip" | grep '\([0-9]\{1,3\}\.\)\{3\}[0-9]\{1,3\}')" ] && l fe "Can't get ip address from interface $cont" 128
+    else
+        l fe "Can't get ip address from interface $cont" 128
+    fi
+else
+    ip="$cont"
+fi
+l i "IP address: $ip"
+[ -n "$4" ] && ttl="$4"
+[ -n "$ttl" ] && l i "TTL: $ttl"
+
+l i "Trying to get domains content..."
+api "list?domain=$domain"
+records=`echo "$resp" | sed 's/^.*\[{//;s/}\].*$//;s/},[ ]*{/\n/g'`
+ecode=0
+for sd in $(echo "$subdomain" | sed 's/,/ /g'); do
+    d
+    rec=`echo "$records" | grep -F '"subdomain": "'"$sd"'"' | sed 's/, /\n/g'`
+    if [ -n "$rec" ]; then
+        l d "Current record: 
+$rec"
+        rid=`echo "$rec" | sed '/"record_id"/!d;s/^.*: //'`
+        req="edit?domain=$domain&record_id=$rid&content=$ip"
+        [ -n "$ttl" ] && req="$req&ttl=$ttl"
+        api "$req" 'POST'
+        if [ -n "$(echo "$resp" | grep '"success": "ok"}$')" ]; then
+            l i "Record $sd is sucessfully updated."
+        else
+            l f "Fail to update record $sd."
+            ecode=129
+        fi
+    else
+        l n "Can't find record $sd.$domain, trying to create one..."
+        req="add?domain=$domain&subdomain=$sd&content=$ip&type=A"
+        [ -n "$ttl" ] && req="$req&ttl=$ttl" || req="$req&ttl=$defttl"
+        api "$req" 'POST'
+               if [ -n "$(echo "$resp" | grep '"success": "ok"}$')" ]; then
+            l i "Record $sd is sucessfully created."
+        else
+            l f "Fail to create record $sd."
+            ecode=130
+        fi 
+    fi
+done
+
+l i 'Finished'
+d
+exit "$ecode"
+
