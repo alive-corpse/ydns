@@ -122,6 +122,7 @@ case "$1" in
     h|help|?|--help|/h|/?)
         d
         echo "To update yandex dns records, we need at least domain, subdomain, token and address or interface name"
+        echo "Notice: only records with A type will be updated"
         echo "You can get token here:  https://pddimp.yandex.ru/api2/registrar/get_token"
         echo
         echo "Parameters:"
@@ -129,6 +130,7 @@ case "$1" in
         echo
         echo "  subdomain can contain few subdomains, divided by commas without spaces:"
         echo "      subdomain1,subdomain2,subdomain3"
+        echo "  Also you can use * and @ signs to update records"
         echo 
         echo "  iface|ip: can be interface name like eth0 or ip address"
         echo
@@ -189,11 +191,16 @@ l i "IP address: $ip"
 
 l i "Trying to get domains content..."
 api "list?domain=$domain"
-records=`echo "$resp" | sed 's/^.*\[{//;s/}\].*$//;s/},[ ]*{/\n/g'`
+records=`echo "$resp" | sed 's/^.*\[{//;s/}\].*$//;s/},[ ]*{/\n/g' | grep -F '"type": "A"'`
 ecode=0
-for sd in $(echo "$subdomain" | sed 's/,/ /g'); do
+for sd in $(echo "$subdomain" | sed 's/,/ /g;s/\*/\\\*/g'); do
     d
-    rec=`echo "$records" | grep -F '"subdomain": "'"$sd"'"' | sed 's/, /\n/g'`
+    if [ "$sd" == '\*' ]; then
+        rec=`echo "$records" | grep -F '"subdomain": "*"' | sed 's/, /\n/g'`
+        sd='*'
+    else
+        rec=`echo "$records" | grep -F '"subdomain": "'"$sd"'"' | sed 's/, /\n/g'`
+    fi
     if [ -n "$rec" ]; then
         l d "Current record: 
 $rec"
