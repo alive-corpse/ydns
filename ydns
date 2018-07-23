@@ -205,14 +205,19 @@ for sd in $(echo "$subdomain" | sed 's/,/ /g;s/\*/\\\*/g'); do
         l d "Current record: 
 $rec"
         rid=`echo "$rec" | sed '/"record_id"/!d;s/^.*: //'`
-        req="edit?domain=$domain&record_id=$rid&content=$ip"
-        [ -n "$ttl" ] && req="$req&ttl=$ttl"
-        api "$req" 'POST'
-        if [ -n "$(echo "$resp" | grep '"success": "ok"}$')" ]; then
-            l i "Record $sd is sucessfully updated."
+        rip=`echo "$rec" | sed '/"content"/!d;s/^.*: //;s/"//g'`
+        if [ "$rip" == "$ip" ]; then
+            l n "Content of record $sd is equal to current ip and doesn't need to be updated."
         else
-            l f "Fail to update record $sd."
-            ecode=129
+            req="edit?domain=$domain&record_id=$rid&content=$ip"
+            [ -n "$ttl" ] && req="$req&ttl=$ttl"
+            api "$req" 'POST'
+            if [ -n "$(echo "$resp" | grep '"success": "ok"}$')" ]; then
+                l i "Record $sd is sucessfully updated."
+            else
+                l f "Fail to update record $sd."
+                ecode=129
+            fi
         fi
     else
         l n "Can't find record $sd.$domain, trying to create one..."
