@@ -6,9 +6,9 @@
 
 # You can place some (or all) of parameters below instead of using them in commandline
 record='' # For example: test.yourdomain.xx
-token='' # You can get token at 
-cont='' # https://pddimp.yandex.ru/api2/registrar/get_token
-ttl=''
+token='' # You can get token at https://pddimp.yandex.ru/api2/registrar/get_token
+cont='' # IP address
+ttl='' # Time to live
 defttl='1440' # Default ttl for new records
 
 uri='https://pddimp.yandex.ru/api2/admin/dns'
