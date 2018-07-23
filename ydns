@@ -15,7 +15,7 @@ uri='https://pddimp.yandex.ru/api2/admin/dns'
 resp=''
 h="Run \"$0 help\" for help."
 
-#LOGLEVEL='info' # debug/info/warinig
+#LOGLEVEL='info' # debug/info/warning
 LOGLEVEL='info'
 LPREF='date +%Y.%m.%d-%H:%M:%S'
 DEFAULT_COLS=70 # If tput program is not exist
