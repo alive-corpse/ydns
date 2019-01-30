@@ -1,17 +1,20 @@
 #!/bin/sh
 #
-# Script for update and create DNS records in pdd.yandex.ru
+# Script for update and create DNS records with Yandex.Connect
 # by Evgeniy Shumilov <evgeniy.shumilov@gmail.com>
 #
 
 # You can place some (or all) of parameters below instead of using them in commandline
 record='' # For example: test.yourdomain.xx
-token='' # You can get token at https://pddimp.yandex.ru/api2/registrar/get_token
+id=''
+password=''
+token='' # You can get token by run this script with empty token variable
+organization='' # TODO: Append comment here
 cont='' # IP address
 ttl='' # Time to live
 defttl='1440' # Default ttl for new records
 
-uri='https://pddimp.yandex.ru/api2/admin/dns'
+uri='https://api.directory.yandex.net/v6'
 resp=''
 h="Run \"$0 help\" for help."
 
@@ -142,12 +145,12 @@ case "$1" in
     ;;
 esac
 
-# Yandex PDD api
+# Yandex connect api
 api() {
     fulluri="$uri/$1"
     [ -n "$2" ] && METHOD="$2" || METHOD='GET'
     l d "API query: $fulluri"
-    if resp=`curl -s -X "$METHOD" -H "PddToken: $token" "$fulluri"`; then
+    if resp=`curl -s -X "$METHOD" -H "Authorization: OAuth $token" -H 'Content-Type: application/json; charset=utf-8' -H 'Accept: application/json' "$fulluri"`; then
         if [ -n "$resp" ]; then
             l d "Response:
             $resp"
@@ -159,6 +162,7 @@ api() {
     fi
 }
 
+# Checking record(s) existing
 [ -n "$1" ] && record="$1"
 l i "Record(s): $record"
 domain=`echo "$record" | sed 's/^[^\.]*.//'`
@@ -167,8 +171,44 @@ if [ -z "$domain" ] || [ -z "$subdomain" ]; then
     l fe "Domain and subdomain parameter should not be empty. $h" 127
 fi
 
-[ -n "$2" ] && token="$2"
-[ -z "$token" ] && l fe "Fail to get token. $h" 127
+# Checking/Getting authorization token #TODO: Make method updateToken and append self-replacing for id and password if empty 
+#force to update if 1st parameter is "force"
+if [ -z "$token" ]; then
+    if [ -n "$id" ] && [ -n "$password" ]; then
+        l "Auth token not found. Got id and password instead."
+        l "Please get verification code at https://oauth.yandex.ru/authorize?response_type=code&client_id=$id and input it below."
+        vcode=''
+        while [ -z "$vcode" ]; do
+            echo -n 'Verification code: '
+            read vcode
+            if [ -n "$vcode" ] && [ -z "$(echo "$vcode" | sed 's/^[0-9]\{7\}$//')" ]; then
+                l d "Got verification code."
+            else
+                l w "Verification code should contain only 7 numbers, please check it and input again."
+                vcode=''
+            fi
+        done
+        l d "Trying to get auth token."
+        if resp="$(curl -X POST -H 'Content-type: application/x-www-form-urlencoded' --user "$id:$password" -d 'grant_type=authorization_code&code='"$vcode" 'https://oauth.yandex.ru/token')"; then
+            l d "Response:"
+            echo "$resp"
+            token=`echo "$resp" | sed 's/^.*access_token": \?"//;s/".*//'`
+            expires=`echo "$resp" | sed 's/^.*expires_in": \?//;s/[^0-9].*//'`
+            l d "Token: $token  Expires: $expires"
+            l "Successfully got token (expires in $(( $expires / 86400 )) days). Storing in current script."
+            sed '/^token=/s/\'\'/\'''\'/' # TODO: replace by sed -i for self rewriting
+        else
+            l fe "Fail to get auth token by current id, password and verification code. Remember that verification code is valid till 10 minutes from creation moment. $h" 127
+        fi
+    else
+        fe "Fail to get id and password for getting auth token. $h" 127
+    fi
+fi
+
+exit 0
+
+#[ -n "$2" ] && token="$2"
+#[ -z "$token" ] && l fe "Fail to get token. $h" 127
 
 l i "Domain: $domain"
 l i "Subdomain: $subdomain"
@@ -237,3 +277,4 @@ l i 'Finished'
 d
 exit "$ecode"
 
+# vim: syntax=sh nu expandtab shiftwidth=4 softtabstop=4 tabstop=4
